@@ -1,1 +1,332 @@
+#define _CRT_SECURE_NO_WARNINGS
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#include<WinSock2.h>
+#include<WS2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
 
+#include "framework.h"
+#include "포트리스모작.h"
+
+#define MAX_LOADSTRING 100
+
+// 전역 변수:
+HINSTANCE hInst;                                // 현재 인스턴스입니다.
+WCHAR szTitle[MAX_LOADSTRING];                  // 제목 표시줄 텍스트입니다.
+WCHAR szWindowClass[MAX_LOADSTRING];            // 기본 창 클래스 이름입니다.
+
+// 이 코드 모듈에 포함된 함수의 선언을 전달합니다:
+ATOM                MyRegisterClass(HINSTANCE hInstance);
+BOOL                InitInstance(HINSTANCE, int);
+LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
+    _In_opt_ HINSTANCE hPrevInstance,
+    _In_ LPWSTR    lpCmdLine,
+    _In_ int       nCmdShow)
+{
+    UNREFERENCED_PARAMETER(hPrevInstance);
+    UNREFERENCED_PARAMETER(lpCmdLine);
+
+    // TODO: 여기에 코드를 입력합니다.
+
+    // 전역 문자열을 초기화합니다.
+    LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
+    LoadStringW(hInstance, IDC_MY, szWindowClass, MAX_LOADSTRING);
+    MyRegisterClass(hInstance);
+
+    // 애플리케이션 초기화를 수행합니다:
+    if (!InitInstance(hInstance, nCmdShow))
+    {
+        return FALSE;
+    }
+
+    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_MY));
+
+    MSG msg;
+
+    // 기본 메시지 루프입니다:
+    while (GetMessage(&msg, nullptr, 0, 0))
+    {
+        if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+    }
+
+    return (int)msg.wParam;
+}
+
+
+
+//
+//  함수: MyRegisterClass()
+//
+//  용도: 창 클래스를 등록합니다.
+//
+ATOM MyRegisterClass(HINSTANCE hInstance)
+{
+    WNDCLASSEXW wcex;
+
+    wcex.cbSize = sizeof(WNDCLASSEX);
+
+    wcex.style = CS_HREDRAW | CS_VREDRAW;
+    wcex.lpfnWndProc = WndProc;
+    wcex.cbClsExtra = 0;
+    wcex.cbWndExtra = 0;
+    wcex.hInstance = hInstance;
+    wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MY));
+    wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_MY);
+    wcex.lpszClassName = szWindowClass;
+    wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+
+    return RegisterClassExW(&wcex);
+}
+
+//
+//   함수: InitInstance(HINSTANCE, int)
+//
+//   용도: 인스턴스 핸들을 저장하고 주 창을 만듭니다.
+//
+//   주석:
+//
+//        이 함수를 통해 인스턴스 핸들을 전역 변수에 저장하고
+//        주 프로그램 창을 만든 다음 표시합니다.
+//
+BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
+{
+    hInst = hInstance; // 인스턴스 핸들을 전역 변수에 저장합니다.
+
+    HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
+
+    if (!hWnd)
+    {
+        return FALSE;
+    }
+
+    ShowWindow(hWnd, nCmdShow);
+    UpdateWindow(hWnd);
+
+    return TRUE;
+}
+#include<iostream>
+#include <cmath>
+#define BSIZE 20
+#define WM_SOCKET (WM_USER + 1)
+//소켓 프로그래밍용 전역변수
+WSADATA wsadata;
+SOCKET listenSocket, clientSocket;
+SOCKADDR_IN serverAddr, clientAddr = { 0, };
+
+struct BombData { int x;  int y; };
+struct BombPacket {
+    BombData serverBomb;
+    BombData clientBomb;
+    BombData m_Bomb;
+    BombData c_Bomb;
+};
+
+//전역변수
+POINT serverBomb, clientBomb, m_Bomb, c_Bomb;
+double g_Angle = 45.0;
+double g_Speed = 50.0;
+bool g_IsFiring = false;    //포탄이 날아가고 있는지 여부
+void InitServer(HWND hWnd)
+{
+    //소켓 생성
+    ::WSAStartup(MAKEWORD(2, 2), &wsadata);
+    listenSocket = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (listenSocket == INVALID_SOCKET)return;
+    //주소 포트번호 설정
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_addr.s_addr = ::htonl(INADDR_ANY);
+    serverAddr.sin_port = ::htons(7777);
+    //바인드
+    ::bind(listenSocket, (LPSOCKADDR)&serverAddr, sizeof(serverAddr));
+
+    if (::listen(listenSocket, SOMAXCONN) == SOCKET_ERROR)return;
+    //비동기 이벤트 등록
+    ::WSAAsyncSelect(listenSocket, hWnd, WM_SOCKET, FD_ACCEPT);
+}
+void ResetPosition(HWND hWnd)
+{
+    RECT rect;
+    GetClientRect(hWnd, &rect);
+    serverBomb.x = rect.left + BSIZE;
+    serverBomb.y = rect.bottom - BSIZE;
+    clientBomb.x = rect.right - BSIZE;
+    clientBomb.y = rect.bottom - BSIZE;
+    m_Bomb = serverBomb;
+}
+void DrawBomb(HDC hdc, POINT pos, COLORREF color, int size)
+{
+    HBRUSH brush = CreateSolidBrush(color);
+    HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, brush);
+    Ellipse(hdc, pos.x - size, pos.y - size, pos.x + size,
+        pos.y + size);
+    SelectObject(hdc, oldBrush);
+    DeleteObject(brush);
+}
+void DrawScene(HDC hdc)
+{
+    DrawBomb(hdc, serverBomb, RGB(0, 0, 255), BSIZE);
+    DrawBomb(hdc, clientBomb, RGB(0, 255, 0), BSIZE);
+    DrawBomb(hdc, m_Bomb, RGB(255, 0, 0), 5);
+}
+void DrawUI(HDC hdc)
+{
+    wchar_t buffer[100];
+    swprintf(buffer, 100, L"Angle : %.1f, Speed : %.1f", g_Angle, g_Speed);
+    TextOut(hdc, 10, 10, buffer, wcslen(buffer));
+}
+void FlyingBomb(HWND hWnd, WPARAM wParam)
+{
+    static POINT oldPos = { -1,1 };
+    static int t = 0;
+    const double g = 9.8;
+    double angle = g_Angle;
+    double speed = g_Speed;
+    double rad = angle * 3.14159 / 180; //도수를 라디안으로 
+    double vx = speed * cos(rad);
+    double vy = speed * sin(rad);
+    double time = t * 0.1;
+    int x = (int)(m_Bomb.x + vx * time);
+    int y = (int)(m_Bomb.y - (vy * time - 0.5 * g * time * time));
+
+    BombPacket packet;
+    packet.serverBomb = { serverBomb.x, serverBomb.y };
+    packet.m_Bomb = { x, y };
+    packet.clientBomb = { clientBomb.x, clientBomb.y };
+    packet.c_Bomb = { c_Bomb.x, c_Bomb.y };
+    send(clientSocket, (char*)&packet, sizeof(packet), 0);
+
+    HDC hdc = GetDC(hWnd);
+    DrawBomb(hdc, { x, y }, RGB(255, 0, 0), 5); //빨간색 포탄
+    ReleaseDC(hWnd, hdc);
+    t++;
+    if (y > m_Bomb.y)
+    {
+        KillTimer(hWnd, 1);
+        t = 0;
+        g_IsFiring = false;
+        m_Bomb = serverBomb;
+        InvalidateRgn(hWnd, NULL, TRUE);
+    }
+
+}
+void Control(HWND hWnd, WPARAM wParam)
+{
+    switch (wParam)
+    {
+    case VK_LEFT:    serverBomb.x -= 10;     break;
+    case VK_RIGHT:   serverBomb.x += 10;     break;
+    case VK_SPACE:
+        if (!g_IsFiring)
+        {
+            SetTimer(hWnd, 1, 50, NULL);
+            g_IsFiring = true;
+            m_Bomb = serverBomb;
+        }
+        break;
+    }
+    InvalidateRgn(hWnd, NULL, TRUE);
+}
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message)
+    {
+    case WM_CREATE:
+        InitServer(hWnd);
+        ResetPosition(hWnd);
+
+        break;
+    case WM_COMMAND:
+    {
+        int wmId = LOWORD(wParam);
+        // 메뉴 선택을 구문 분석합니다:
+        switch (wmId)
+        {
+        case IDM_ABOUT:
+            DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+            break;
+        case IDM_EXIT:
+            DestroyWindow(hWnd);
+            break;
+        default:
+            return DefWindowProc(hWnd, message, wParam, lParam);
+        }
+    }
+    break;
+    case WM_SOCKET:
+        switch (WSAGETSELECTEVENT(lParam))
+        {
+        case FD_ACCEPT:
+        {
+            int addrLen = sizeof(clientAddr);
+            clientSocket = ::accept(listenSocket, (SOCKADDR*)&clientAddr,
+                &addrLen);
+            ::WSAAsyncSelect(clientSocket, hWnd, WM_SOCKET, FD_READ | FD_CLOSE);
+        }
+        break;
+        case FD_READ:
+        {
+
+        }
+        break;
+        case FD_CLOSE:
+            closesocket(clientSocket);
+            clientSocket = INVALID_SOCKET;
+            break;
+        }
+        break;
+    case WM_KEYDOWN:
+        if (g_IsFiring)break;
+        Control(hWnd, wParam);
+        break;
+    case WM_TIMER:
+        FlyingBomb(hWnd, wParam);
+        break;
+    case WM_PAINT:
+    {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hWnd, &ps);
+        DrawScene(hdc);
+        DrawUI(hdc);
+        EndPaint(hWnd, &ps);
+    }
+    break;
+    case WM_DESTROY:
+        WSACleanup();
+        PostQuitMessage(0);
+        break;
+    default:
+        return DefWindowProc(hWnd, message, wParam, lParam);
+    }
+    return 0;
+}
+
+
+
+// 정보 대화 상자의 메시지 처리기입니다.
+INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    UNREFERENCED_PARAMETER(lParam);
+    switch (message)
+    {
+    case WM_INITDIALOG:
+        return (INT_PTR)TRUE;
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+        {
+            EndDialog(hDlg, LOWORD(wParam));
+            return (INT_PTR)TRUE;
+        }
+        break;
+    }
+    return (INT_PTR)FALSE;
+}
